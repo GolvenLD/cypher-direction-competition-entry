@@ -1,6 +1,5 @@
 import re
 import pandas as pd
-import numpy as np
 from itertools import product
 
 
@@ -12,6 +11,7 @@ def cleanup_arrowheads(left, right):
     return left, right
 
 
+# TODO: fix how variable length relationships are dealt with
 def correct_cypher(row):
     schema_str = row['schema']
     cypher_statement = row['statement']
@@ -20,17 +20,18 @@ def correct_cypher(row):
     new_cypher = cypher_statement
 
     node_pattern = r'\(([\w]+)?((?::`?(?:[\w$]+\s*)+`?)+)?(\s{(.*?)})?\)'
-    arrow_pattern = r'<?-(\[([\w]+)?((?::?\|?[\w$`!]+)+)?(\s{(.*?)})?\*?([\d.*]+)?\])?->?'
+    arrow_pattern = r'<?-(\[([\w]+)?((?::?\|?[\w$`!]+)+)?(\s{(.*?)})?\*?([\d.*]+)?\])?->?'  # -[r:FOO]-> is an 'arrow'
     sp = r'\s*' # keyboard space pattern
 
     rel_pattern = node_pattern+r'(?:'+sp+arrow_pattern+sp+node_pattern+r')+'
 
-    relationships = []
     matches = list(re.finditer(rel_pattern, cypher_statement))
     if matches:
         for match in matches:
             relationship = match if isinstance(match, str) else match.group()
 
+            # A relationship can have multiple steps, and we want to process all of them
+            # example: (p1)-[:ACTED_IN]->(m)-[:PRODUCED_BY]->(p2)
             if relationship.count('-') > 2:
                 relation_bits = relationship.split('-')
                 # Remove potential heading or trailing arrow directions left from cut
@@ -48,7 +49,6 @@ def correct_cypher(row):
                     i += 2
 
             print(relationship)
-            relationships.append(relationship)
 
             extracted_data = extract_data(relationship, node_pattern, arrow_pattern, cypher_statement)
             schemas = extract_schemas(schema_str)
@@ -56,13 +56,15 @@ def correct_cypher(row):
             l_type_known = extracted_data['l_node']['type'] != []
             r_type_known = extracted_data['r_node']['type'] != []
             rel_type_known = extracted_data['arrow']['type'] != []
-            direction = extracted_data['arrow']['direction']
+
+            direction = extracted_data['arrow']['direction'] # 1 = to the right, -1 = to the left, 0 = neither
 
             needs_fixing = False
 
             if direction == 0:
                 print('No direction given - no problem for matching.')
             else:
+                # If we know the types of all the elements
                 if l_type_known and r_type_known and rel_type_known:
                     if direction == 1:
                         given = list(product(
@@ -82,7 +84,7 @@ def correct_cypher(row):
                         needs_fixing = True
                         print('Needs fixing.')
 
-                # Needs cases where other ways are known
+                # If we know the types of the left node and the relationship
                 elif l_type_known and rel_type_known:
                     in_schema = False
                     if direction == 1:
@@ -100,6 +102,7 @@ def correct_cypher(row):
                         needs_fixing = True
                         print('Needs fixing.')
 
+                # If we know the types of the right node and the relationship
                 elif r_type_known and rel_type_known:
                     in_schema = False
                     if direction == 1:
@@ -117,6 +120,7 @@ def correct_cypher(row):
                         needs_fixing = True
                         print('Needs fixing.')
 
+                # If we know only the types of the nodes
                 elif l_type_known and r_type_known:
                     in_schema = False
                     if direction == 1:
@@ -137,6 +141,7 @@ def correct_cypher(row):
 
             # Known shortcoming; for the * symbol, it would be much better to check for the length of the variable
             # relationship. If the length is even, then the relationship can exist, otherwise maybe not.
+            # I ran out of time! :)
             for label in extracted_data['arrow']['label']:
                 if '*' in label:
                     needs_fixing = False
@@ -151,7 +156,6 @@ def correct_cypher(row):
                     direction
                 )
                 new_cypher = new_cypher.replace(relationship, new_rel)
-
 
     print()
     return new_cypher
@@ -245,11 +249,11 @@ def extract_node_label(node, cypher_statement):
     def group(res):
         type = res.group()
         return type
-    if ':' in node:
+    if ':' in node:  # attempt to extract the type of the node from the node itself
         return list(map(group, list(re.finditer(type_pattern, node))))
     elif node == '()':
         return []
-    else:
+    else:  # othwerise, look for the type of the node elsewhere in the cypher!
         node_name = node[1:-1]
         specific_node_pattern = '\('+node_name+'((?::`?(?:[\w$]+\s*)+`?)+)?(\s{(.*?)})?\)'
         matches = list(re.finditer(specific_node_pattern, cypher_statement))
