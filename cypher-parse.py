@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from itertools import product
 
-# Known shortcoming; for the * symbol, it would be much better to check for the length of the variable relationship.
+
 def cleanup_arrowheads(left, right):
     if left[0] in ['<','>']:
         left = left[1:]
@@ -58,6 +58,8 @@ def correct_cypher(row):
             rel_type_known = extracted_data['arrow']['type'] != []
             direction = extracted_data['arrow']['direction']
 
+            needs_fixing = False
+
             if direction == 0:
                 print('No direction given - no problem for matching.')
             else:
@@ -77,16 +79,8 @@ def correct_cypher(row):
                     if any(item in schemas for item in given):
                         print('Relationship in schema!')
                     else:
-                        if '*' not in extracted_data['arrow']['label']:
-                            print('Needs fixing.')
-                            print(extracted_data['arrow']['label'])
-                            new_rel = fix_rel(
-                                extracted_data['l_node']['node'],
-                                extracted_data['arrow']['arrow'],
-                                extracted_data['r_node']['node'],
-                                direction
-                            )
-                            new_cypher = new_cypher.replace(relationship, new_rel)
+                        needs_fixing = True
+                        print('Needs fixing.')
 
                 # Needs cases where other ways are known
                 elif l_type_known and rel_type_known:
@@ -103,16 +97,8 @@ def correct_cypher(row):
                     if in_schema:
                         print('Relationship in schema!')
                     else:
-                        if '*' not in extracted_data['arrow']['label']:
-                            print('Needs fixing.')
-                            print(extracted_data['arrow']['label'])
-                            new_rel = fix_rel(
-                                extracted_data['l_node']['node'],
-                                extracted_data['arrow']['arrow'],
-                                extracted_data['r_node']['node'],
-                                direction
-                            )
-                            new_cypher = new_cypher.replace(relationship, new_rel)
+                        needs_fixing = True
+                        print('Needs fixing.')
 
                 elif r_type_known and rel_type_known:
                     in_schema = False
@@ -128,16 +114,8 @@ def correct_cypher(row):
                     if in_schema:
                         print('Relationship in schema!')
                     else:
-                        if '*' not in extracted_data['arrow']['label']:
-                            print('Needs fixing.')
-                            print(extracted_data['arrow']['label'])
-                            new_rel = fix_rel(
-                                extracted_data['l_node']['node'],
-                                extracted_data['arrow']['arrow'],
-                                extracted_data['r_node']['node'],
-                                direction
-                            )
-                            new_cypher = new_cypher.replace(relationship, new_rel)
+                        needs_fixing = True
+                        print('Needs fixing.')
 
                 elif l_type_known and r_type_known:
                     in_schema = False
@@ -152,18 +130,27 @@ def correct_cypher(row):
                     if in_schema:
                         print('Relationship in schema!')
                     else:
-                        if '*' not in extracted_data['arrow']['label']:
-                            print('Needs fixing.')
-                            print(extracted_data['arrow']['label'])
-                            new_rel = fix_rel(
-                                extracted_data['l_node']['node'],
-                                extracted_data['arrow']['arrow'],
-                                extracted_data['r_node']['node'],
-                                direction
-                            )
-                            new_cypher = new_cypher.replace(relationship, new_rel)
+                        needs_fixing = True
+                        print('Needs fixing.')
                 else:
                     print('Not enough information.')
+
+            # Known shortcoming; for the * symbol, it would be much better to check for the length of the variable
+            # relationship. If the length is even, then the relationship can exist, otherwise maybe not.
+            for label in extracted_data['arrow']['label']:
+                if '*' in label:
+                    needs_fixing = False
+
+            if needs_fixing:
+                print('Needs fixing.')
+                print(extracted_data['arrow']['label'])
+                new_rel = fix_rel(
+                    extracted_data['l_node']['node'],
+                    extracted_data['arrow']['arrow'],
+                    extracted_data['r_node']['node'],
+                    direction
+                )
+                new_cypher = new_cypher.replace(relationship, new_rel)
 
 
     print()
